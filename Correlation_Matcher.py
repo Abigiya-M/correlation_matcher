@@ -1,76 +1,65 @@
 from sentence_transformers import SentenceTransformer
-from scipy.spatial.distance import cosine
-import hyperon
+from sklearn.metrics.pairwise import cosine_similarity
+import numpy as np
 
-# Load the embedding model
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
-
-# Initialize MeTTa
-m = hyperon.Metta()
-
-# Load OpenPsi rules file
-m.load_file("rules.metta")
-
-
-def get_all_rules():
+def match_rule(m, conversation_summary: str) -> str:
     """
-    Query MeTTa to get all rule IDs from &psiRules.
-    You might need to write a helper in rules.metta if this doesn't exist yet.
-    For now, assume it returns a list of rule IDs.
+    Finds the most relevant and satisfiable rule for the given conversation summary.
+    Uses OpenPsi to get the rules, checks satisfiability, and computes semantic similarity.
+    
+    :param m: py-metta Metta instance
+    :param conversation_summary: Current conversation context (string)
+    :return: The best matching rule handle
     """
-    result = m.evaluate('(getCategories)')  # fallback example
-    print("Available categories/rules:", result)
 
-    rules = m.evaluate('(collapse (match &psiRules (: $rule .) $rule))')
-    return [str(r) for r in rules]
-
-
-def get_rule_context(rule_id: str) -> str:
-    """
-    Query MeTTa to get the context string of a given rule.
-    """
-    result = m.evaluate(f'(getContext &psiRules {rule_id})')
-    if result:
-        return str(result[0])
-    return ""
-
-
-def match_rule(conversation_summary: str) -> str:
-    """
-    Given a conversation summary, find the most correlated rule.
-    """
-    # Embed the conversation summary
+    # Load the embedding model
+    embedder = SentenceTransformer("all-MiniLM-L6-v2")
     summary_vector = embedder.encode(conversation_summary)
 
-    rules = get_all_rules()
+    # Get all rule handles from &psiRules
+    rules = m.evaluate('(getAllRules)')
     if not rules:
-        raise ValueError("No rules found in &psiRules")
+        print("[WARN] No rules found.")
+        return None
 
+    print(f"[INFO] Found {len(rules)} rules in &psiRules.")
+
+    #Iterate and find satisfiable + most similar
     best_rule = None
     best_score = -1
 
     for rule in rules:
-        context = get_rule_context(rule)
-        if not context:
+        # Check satisfiability first
+        sat = m.evaluate(f'(checkSatisfiability {rule} &satisfiabilityCache)')
+        if 'True' not in str(sat) and 'TRUE_TV' not in str(sat):
+            print(f"[DEBUG] Rule {rule} is not satisfiable. Skipping.")
             continue
 
-        context_vector = embedder.encode(context)
-        similarity = 1 - cosine(summary_vector, context_vector)
+        # Get the rule context
+        context_atoms = m.evaluate(f'(getContext &psiRules {rule})')
+        if not context_atoms:
+            print(f"[WARN] Rule {rule} has no context. Skipping.")
+            continue
 
-        print(f"Rule: {rule}, Context: {context}, Similarity: {similarity:.4f}")
+        # For simplicity, I convert the context to string
+        context_str = " ".join(str(atom) for atom in context_atoms)
+        context_vector = embedder.encode(context_str)
+
+        # Compute similarity
+        similarity = cosine_similarity(
+            [summary_vector],
+            [context_vector]
+        )[0][0]
+
+        print(f"[INFO] Rule {rule} → Similarity: {similarity:.3f}")
 
         if similarity > best_score:
             best_score = similarity
             best_rule = rule
 
-    return best_rule
-
-
-if __name__ == "__main__":
-    summary = input("Enter conversation summary: ")
-    best_rule = match_rule(summary)
-
     if best_rule:
-        print(f"Best matching rule: {best_rule}")
+        print(f"[RESULT] Best matching rule: {best_rule} with similarity {best_score:.3f}")
     else:
-        print("No matching rule found.")
+        print("[RESULT] No satisfiable matching rule found.")
+
+    return best_rule
