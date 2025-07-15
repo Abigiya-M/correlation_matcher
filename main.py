@@ -1,16 +1,20 @@
-# main.py
 from hyperon import MeTTa
-from correlation_matcher import match_rule
+from Correlation_Matcher import match_rule  
 
-m = MeTTa()
-m.load_file("rules.metta")
-m.load_file("implicator.metta")
+def load_metta_file(metta: MeTTa, filepath: str):
+    with open(filepath, "r") as f:
+        metta.run(f.read())
 
-summary = "The user is frustrated about long waiting times."
+def main():
+    m = MeTTa()
+    load_metta_file(m, "rule.metta")
+    load_metta_file(m, "implicator.metta")
+    load_metta_file(m, "sample_rules.metta")
 
-best_rule = match_rule(m, summary)
+    summary = "customer asked about billing issues"
+    best_rule = match_rule(m, summary)
 
-if best_rule:
-    print(f"Best matching rule: {best_rule}")
-else:
-    print("No matching rule found.")
+    print("Best rule:", best_rule)
+
+if __name__ == "__main__":
+    main()
