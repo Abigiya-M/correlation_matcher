@@ -17,7 +17,7 @@ def match_rule(m, conversation_summary: str) -> str:
     summary_vector = embedder.encode(conversation_summary)
 
     # Get all rule handles from &psiRules
-    rules = m.evaluate('(getAllRules)')
+    rules = m.run('(getAllRules)')
     if not rules:
         print("[WARN] No rules found.")
         return None
@@ -30,13 +30,13 @@ def match_rule(m, conversation_summary: str) -> str:
 
     for rule in rules:
         # Check satisfiability first
-        sat = m.evaluate(f'(checkSatisfiability {rule} &satisfiabilityCache)')
+        sat = m.run(f'(checkSatisfiability {rule} &satisfiabilityCache)')
         if 'True' not in str(sat) and 'TRUE_TV' not in str(sat):
             print(f"[DEBUG] Rule {rule} is not satisfiable. Skipping.")
             continue
 
         # Get the rule context
-        context_atoms = m.evaluate(f'(getContext &psiRules {rule})')
+        context_atoms = m.run(f'(getContext &psiRules {rule})')
         if not context_atoms:
             print(f"[WARN] Rule {rule} has no context. Skipping.")
             continue
